@@ -25,6 +25,7 @@ class Index:
         record = self.find(key)
         if record is not None:
             record.value = value
+            record.expires_at = None
         else:
             self._records.append(Record(key, value))
 
@@ -41,3 +42,4 @@ class Index:
 
     def clear(self):
         self._records = []
+

@@ -1,5 +1,6 @@
-from kv import log
 
+import time
+from kv import log
 
 class Database:
     def __init__(self, index, log_path=log.LOG_FILE):
@@ -29,7 +30,7 @@ class Database:
         if cmd == "GET":
             if len(parts) != 2:
                 return "ERR wrong number of arguments"
-            record = self.index.find(parts[1])
+            record = self._live_record(parts[1])
             return record.value if record else "NULL"
 
         if cmd == "DEL":
@@ -43,7 +44,7 @@ class Database:
         if cmd == "EXISTS":
             if len(parts) != 2:
                 return "ERR wrong number of arguments"
-            return "1" if self.index.find(parts[1]) else "0"
+            return "1" if self._live_record(parts[1]) else "0"
 
         if cmd == "MSET":
             pairs = parts[1:]
@@ -59,9 +60,42 @@ class Database:
                 return "ERR wrong number of arguments"
             results = []
             for key in parts[1:]:
-                record = self.index.find(key)
+                record = self._live_record(key)
                 results.append(record.value if record else "NULL")
             return "\n".join(results)
+
+        if cmd == "EXPIRE":
+            if len(parts) != 3:
+                return "ERR wrong number of arguments"
+            try:
+                seconds = float(parts[2])
+            except ValueError:
+                return "ERR invalid seconds"
+            record = self._live_record(parts[1])
+            if record is None:
+                return "0"
+            deadline = time.time() + seconds
+            record.expires_at = deadline
+            # Log the absolute deadline so replay doesn't restart the clock.
+            self._persist("PEXPIREAT %s %s" % (parts[1], deadline), persist)
+            return "1"
+
+        if cmd == "PEXPIREAT":
+            # Internal command written by EXPIRE; used during replay.
+            record = self.index.find(parts[1])
+            if record is not None:
+                record.expires_at = float(parts[2])
+            return "1"
+
+        if cmd == "TTL":
+            if len(parts) != 2:
+                return "ERR wrong number of arguments"
+            record = self._live_record(parts[1])
+            if record is None:
+                return "-2"
+            if record.expires_at is None:
+                return "-1"
+            return str(int(record.expires_at - time.time()))
 
         return "ERR unknown command"
 
@@ -69,3 +103,13 @@ class Database:
         """Append a successful write to data.db, unless we are replaying."""
         if persist:
             log.append(line, self.log_path)
+
+    def _live_record(self, key):
+        """Return the record for key, deleting it first if it has expired."""
+        record = self.index.find(key)
+        if record is None:
+            return None
+        if record.expires_at is not None and time.time() >= record.expires_at:
+            self.index.remove(key)
+            return None
+        return record
