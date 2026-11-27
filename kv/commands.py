@@ -1,11 +1,16 @@
+"""Parse and execute commands."""
 
 import time
+
 from kv import log
+
 
 class Database:
     def __init__(self, index, log_path=log.LOG_FILE):
         self.index = index
         self.log_path = log_path
+        self._tx_buffer = None  # None means no transaction is active
+        self._tx_snapshot = None
 
     def replay(self):
         """Rebuild the index from data.db. Nothing is re-written to the log."""
@@ -97,11 +102,48 @@ class Database:
                 return "-1"
             return str(int(record.expires_at - time.time()))
 
+        if cmd == "RANGE":
+            if len(parts) != 3:
+                return "ERR wrong number of arguments"
+            live = []
+            for key in self.index.range_keys(parts[1], parts[2]):
+                if self._live_record(key) is not None:
+                    live.append(key)
+            return "\n".join(live)
+
+        if cmd == "BEGIN":
+            if self._tx_buffer is not None:
+                return "ERR transaction already active"
+            self._tx_buffer = []
+            self._tx_snapshot = self.index.snapshot()
+            return "OK"
+
+        if cmd == "COMMIT":
+            if self._tx_buffer is None:
+                return "ERR no transaction"
+            for buffered in self._tx_buffer:
+                log.append(buffered, self.log_path)
+            self._tx_buffer = None
+            self._tx_snapshot = None
+            return "OK"
+
+        if cmd == "ABORT":
+            if self._tx_buffer is None:
+                return "ERR no transaction"
+            self.index.restore(self._tx_snapshot)
+            self._tx_buffer = None
+            self._tx_snapshot = None
+            return "OK"
+
         return "ERR unknown command"
 
     def _persist(self, line, persist):
-        """Append a successful write to data.db, unless we are replaying."""
-        if persist:
+        """Append a write to data.db, or buffer it inside a transaction."""
+        if not persist:
+            return
+        if self._tx_buffer is not None:
+            self._tx_buffer.append(line)
+        else:
             log.append(line, self.log_path)
 
     def _live_record(self, key):

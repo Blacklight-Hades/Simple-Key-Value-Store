@@ -40,6 +40,32 @@ class Index:
     def keys(self):
         return [r.key for r in self._records]
 
+    def range_keys(self, start, end):
+        """Return keys with start <= key <= end, sorted lexicographically."""
+        matches = [k for k in self.keys() if start <= k <= end]
+        # Insertion sort, so we don't depend on a library structure.
+        for i in range(1, len(matches)):
+            current = matches[i]
+            j = i - 1
+            while j >= 0 and matches[j] > current:
+                matches[j + 1] = matches[j]
+                j -= 1
+            matches[j + 1] = current
+        return matches
+
     def clear(self):
         self._records = []
+
+    def snapshot(self):
+        """Return a deep copy of all records."""
+        copies = []
+        for r in self._records:
+            c = Record(r.key, r.value)
+            c.expires_at = r.expires_at
+            copies.append(c)
+        return copies
+
+    def restore(self, records):
+        """Replace the current records with a previous snapshot."""
+        self._records = records
 

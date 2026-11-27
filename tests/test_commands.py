@@ -50,3 +50,33 @@ def test_ttl_missing_and_no_expiry(tmp_path):
     assert db.execute("TTL nope") == "-2"
     db.execute("SET a 1")
     assert db.execute("TTL a") == "-1"
+def test_range(tmp_path):
+    db = make_db(tmp_path)
+    db.execute("MSET a 1 c 3 b 2 z 26")
+    assert db.execute("RANGE a c") == "a\nb\nc"
+
+
+def test_transaction_commit(tmp_path):
+    db = make_db(tmp_path)
+    db.execute("BEGIN")
+    db.execute("SET a 1")
+    assert db.execute("GET a") == "1"
+    db.execute("COMMIT")
+
+    db2 = make_db(tmp_path)
+    db2.replay()
+    assert db2.execute("GET a") == "1"
+
+
+def test_transaction_abort(tmp_path):
+    db = make_db(tmp_path)
+    db.execute("SET a 1")
+    db.execute("BEGIN")
+    db.execute("SET a 2")
+    db.execute("DEL a")
+    db.execute("ABORT")
+    assert db.execute("GET a") == "1"
+
+    db2 = make_db(tmp_path)
+    db2.replay()
+    assert db2.execute("GET a") == "1"
