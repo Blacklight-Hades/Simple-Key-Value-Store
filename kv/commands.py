@@ -5,7 +5,7 @@ import time
 from kv import log
 
 WRONGTYPE = "ERR wrong type"
-
+NIL = ""
 
 class Database:
     def __init__(self, index, log_path=log.LOG_FILE):
@@ -39,7 +39,7 @@ class Database:
                 return "ERR wrong number of arguments"
             record = self._live_record(parts[1])
             if record is None:
-                return "NULL"
+                return NIL
             if record.kind != "string":
                 return WRONGTYPE
             return record.value
@@ -73,7 +73,7 @@ class Database:
             for key in parts[1:]:
                 record = self._live_record(key)
                 if record is None or record.kind != "string":
-                    results.append("NULL")
+                    results.append(NIL)
                 else:
                     results.append(record.value)
             return "\n".join(results)
@@ -115,10 +115,12 @@ class Database:
             if len(parts) != 3:
                 return "ERR wrong number of arguments"
             live = []
-            for key in self.index.range_keys(parts[1], parts[2]):
+            start = parts[1].strip('"')
+            end = parts[2].strip('"')
+            for key in self.index.range_keys(start, end):
                 if self._live_record(key) is not None:
                     live.append(key)
-            return "\n".join(live)
+            return "\n".join(live + ["END"])
 
         if cmd == "BEGIN":
             if self._tx_buffer is not None:
@@ -165,13 +167,13 @@ class Database:
                 return "ERR wrong number of arguments"
             record = self._live_record(parts[1])
             if record is None:
-                return "NULL"
+                return NIL
             if record.kind != "hash":
                 return WRONGTYPE
             for pair in record.value:
                 if pair[0] == parts[2]:
                     return pair[1]
-            return "NULL"
+            return NIL
 
         if cmd == "HGETALL":
             if len(parts) != 2:
@@ -247,6 +249,22 @@ class Database:
             self.index.clear()
             self._persist(line, persist)
             return "OK"
+
+        if cmd in ("LPOP", "RPOP"):
+            if len(parts) != 2:
+                return "ERR wrong number of arguments"
+            record = self._live_record(parts[1])
+            if record is None:
+                return NIL
+            if record.kind != "list":
+                return WRONGTYPE
+            if not record.value:
+                return NIL
+            item = record.value.pop(0 if cmd == "LPOP" else -1)
+            if not record.value:
+                self.index.remove(parts[1])
+            self._persist(line, persist)
+            return item
 
         return "ERR unknown command"
 

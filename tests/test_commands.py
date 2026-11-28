@@ -14,7 +14,7 @@ def test_set_get(tmp_path):
 
 def test_missing_key(tmp_path):
     db = make_db(tmp_path)
-    assert db.execute("GET nope") == "NULL"
+    assert db.execute("GET nope") == ""
 
 
 def test_persistence_after_restart(tmp_path):
@@ -25,14 +25,14 @@ def test_persistence_after_restart(tmp_path):
 
     db2 = make_db(tmp_path)  # new process, same file
     db2.replay()
-    assert db2.execute("GET a") == "NULL"
+    assert db2.execute("GET a") == ""
     assert db2.execute("GET b") == "2"
 
 
 def test_mset_mget(tmp_path):
     db = make_db(tmp_path)
     db.execute("MSET a 1 b 2")
-    assert db.execute("MGET a b c") == "1\n2\nNULL"
+    assert db.execute("MGET a b c") == "1\n2\n"
 
 def test_ttl_survives_restart(tmp_path):
     db = make_db(tmp_path)
@@ -50,10 +50,11 @@ def test_ttl_missing_and_no_expiry(tmp_path):
     assert db.execute("TTL nope") == "-2"
     db.execute("SET a 1")
     assert db.execute("TTL a") == "-1"
+
 def test_range(tmp_path):
     db = make_db(tmp_path)
     db.execute("MSET a 1 c 3 b 2 z 26")
-    assert db.execute("RANGE a c") == "a\nb\nc"
+    assert db.execute("RANGE a c") == "a\nb\nc\nEND"
 
 
 def test_transaction_commit(tmp_path):
@@ -87,7 +88,7 @@ def test_hash_commands(tmp_path):
     db.execute("HSET user school UNT")
     db.execute("HSET user name Hades Z")
     assert db.execute("HGET user name") == "Hades Z"
-    assert db.execute("HGET user nope") == "NULL"
+    assert db.execute("HGET user nope") == ""
     assert db.execute("HGETALL user") == "name\nHades Z\nschool\nUNT"
 
     db2 = make_db(tmp_path)
@@ -133,9 +134,23 @@ def test_flushdb(tmp_path):
     db.execute("MSET a 1 b 2")
     db.execute("HSET h f v")
     assert db.execute("FLUSHDB") == "OK"
-    assert db.execute("GET a") == "NULL"
+    assert db.execute("GET a") == ""
 
     db2 = make_db(tmp_path)
     db2.replay()
-    assert db2.execute("GET a") == "NULL"
+    assert db2.execute("GET a") == ""
     assert db2.execute("EXISTS h") == "0"
+
+def test_list_pop(tmp_path):
+    db = make_db(tmp_path)
+    db.execute("RPUSH l a")
+    db.execute("RPUSH l b")
+    db.execute("RPUSH l c")
+    assert db.execute("LPOP l") == "a"
+    assert db.execute("RPOP l") == "c"
+
+    db2 = make_db(tmp_path)
+    db2.replay()
+    assert db2.execute("LRANGE l 0 -1") == "b"
+    assert db2.execute("LPOP l") == "b"
+    assert db2.execute("LPOP l") == ""
