@@ -80,3 +80,37 @@ def test_transaction_abort(tmp_path):
     db2 = make_db(tmp_path)
     db2.replay()
     assert db2.execute("GET a") == "1"
+
+def test_hash_commands(tmp_path):
+    db = make_db(tmp_path)
+    db.execute("HSET user name Hades")
+    db.execute("HSET user school UNT")
+    db.execute("HSET user name Hades Z")
+    assert db.execute("HGET user name") == "Hades Z"
+    assert db.execute("HGET user nope") == "NULL"
+    assert db.execute("HGETALL user") == "name\nHades Z\nschool\nUNT"
+
+    db2 = make_db(tmp_path)
+    db2.replay()
+    assert db2.execute("HGET user school") == "UNT"
+
+
+def test_list_commands(tmp_path):
+    db = make_db(tmp_path)
+    db.execute("RPUSH l b")
+    db.execute("RPUSH l c")
+    db.execute("LPUSH l a")
+    assert db.execute("LRANGE l 0 -1") == "a\nb\nc"
+    assert db.execute("LRANGE l 1 1") == "b"
+
+    db2 = make_db(tmp_path)
+    db2.replay()
+    assert db2.execute("LRANGE l 0 -1") == "a\nb\nc"
+
+
+def test_wrong_type(tmp_path):
+    db = make_db(tmp_path)
+    db.execute("HSET h f v")
+    assert db.execute("GET h") == "ERR wrong type"
+    db.execute("RPUSH l x")
+    assert db.execute("HGET l f") == "ERR wrong type"

@@ -1,11 +1,11 @@
 class Record:
     """One entry in the store."""
 
-    def __init__(self, key, value):
+    def __init__(self, key, value, kind="string"):
         self.key = key
         self.value = value
+        self.kind = kind
         self.expires_at = None  # used later for EXPIRE/TTL
-
 
 class Index:
     """A simple list of records, scanned linearly."""
@@ -25,9 +25,24 @@ class Index:
         record = self.find(key)
         if record is not None:
             record.value = value
+            record.kind = "string"
             record.expires_at = None
         else:
             self._records.append(Record(key, value))
+
+    def get_or_create(self, key, kind):
+        """Return the record for key, creating an empty one of this kind.
+        Returns None if the key exists with a different kind.
+        """
+        record = self.find(key)
+        if record is None:
+            empty = [] if kind in ("hash", "list") else ""
+            record = Record(key, empty, kind)
+            self._records.append(record)
+            return record
+        if record.kind != kind:
+            return None
+        return record
 
     def remove(self, key):
         """Delete key. Return True if it existed."""
@@ -60,7 +75,13 @@ class Index:
         """Return a deep copy of all records."""
         copies = []
         for r in self._records:
-            c = Record(r.key, r.value)
+            if r.kind == "hash":
+                value = [[pair[0], pair[1]] for pair in r.value]
+            elif r.kind == "list":
+                value = list(r.value)
+            else:
+                value = r.value
+            c = Record(r.key, value, r.kind)
             c.expires_at = r.expires_at
             copies.append(c)
         return copies

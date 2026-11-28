@@ -4,6 +4,8 @@ import time
 
 from kv import log
 
+WRONGTYPE = "ERR wrong type"
+
 
 class Database:
     def __init__(self, index, log_path=log.LOG_FILE):
@@ -36,7 +38,11 @@ class Database:
             if len(parts) != 2:
                 return "ERR wrong number of arguments"
             record = self._live_record(parts[1])
-            return record.value if record else "NULL"
+            if record is None:
+                return "NULL"
+            if record.kind != "string":
+                return WRONGTYPE
+            return record.value
 
         if cmd == "DEL":
             if len(parts) != 2:
@@ -134,6 +140,87 @@ class Database:
             self._tx_buffer = None
             self._tx_snapshot = None
             return "OK"
+
+        if cmd == "HSET":
+            pieces = line.split(" ", 3)
+            if len(pieces) != 4:
+                return "ERR wrong number of arguments"
+            record = self.index.get_or_create(pieces[1], "hash")
+            if record is None:
+                return WRONGTYPE
+            for pair in record.value:
+                if pair[0] == pieces[2]:
+                    pair[1] = pieces[3]
+                    break
+            else:
+                record.value.append([pieces[2], pieces[3]])
+            self._persist(line, persist)
+            return "OK"
+
+        if cmd == "HGET":
+            if len(parts) != 3:
+                return "ERR wrong number of arguments"
+            record = self._live_record(parts[1])
+            if record is None:
+                return "NULL"
+            if record.kind != "hash":
+                return WRONGTYPE
+            for pair in record.value:
+                if pair[0] == parts[2]:
+                    return pair[1]
+            return "NULL"
+
+        if cmd == "HGETALL":
+            if len(parts) != 2:
+                return "ERR wrong number of arguments"
+            record = self._live_record(parts[1])
+            if record is None:
+                return ""
+            if record.kind != "hash":
+                return WRONGTYPE
+            lines = []
+            for pair in record.value:
+                lines.append(pair[0])
+                lines.append(pair[1])
+            return "\n".join(lines)
+
+        if cmd in ("LPUSH", "RPUSH"):
+            pieces = line.split(" ", 2)
+            if len(pieces) != 3:
+                return "ERR wrong number of arguments"
+            record = self.index.get_or_create(pieces[1], "list")
+            if record is None:
+                return WRONGTYPE
+            if cmd == "LPUSH":
+                record.value.insert(0, pieces[2])
+            else:
+                record.value.append(pieces[2])
+            self._persist(line, persist)
+            return str(len(record.value))
+
+        if cmd == "LRANGE":
+            if len(parts) != 4:
+                return "ERR wrong number of arguments"
+            try:
+                start = int(parts[2])
+                stop = int(parts[3])
+            except ValueError:
+                return "ERR value is not an integer"
+            record = self._live_record(parts[1])
+            if record is None:
+                return ""
+            if record.kind != "list":
+                return WRONGTYPE
+            size = len(record.value)
+            # Negative indexes count from the end (-1 is the last element).
+            if start < 0:
+                start = max(size + start, 0)
+            if stop < 0:
+                stop = size + stop
+            stop = min(stop, size - 1)
+            if start > stop:
+                return ""
+            return "\n".join(record.value[start:stop + 1])
 
         return "ERR unknown command"
 
