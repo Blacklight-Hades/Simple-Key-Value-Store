@@ -114,3 +114,28 @@ def test_wrong_type(tmp_path):
     assert db.execute("GET h") == "ERR wrong type"
     db.execute("RPUSH l x")
     assert db.execute("HGET l f") == "ERR wrong type"
+
+def test_incr_decr(tmp_path):
+    db = make_db(tmp_path)
+    assert db.execute("INCR n") == "1"
+    assert db.execute("INCR n") == "2"
+    assert db.execute("DECR n") == "1"
+    db.execute("SET word hello")
+    assert db.execute("INCR word") == "ERR value is not an integer"
+
+    db2 = make_db(tmp_path)
+    db2.replay()
+    assert db2.execute("GET n") == "1"
+
+
+def test_flushdb(tmp_path):
+    db = make_db(tmp_path)
+    db.execute("MSET a 1 b 2")
+    db.execute("HSET h f v")
+    assert db.execute("FLUSHDB") == "OK"
+    assert db.execute("GET a") == "NULL"
+
+    db2 = make_db(tmp_path)
+    db2.replay()
+    assert db2.execute("GET a") == "NULL"
+    assert db2.execute("EXISTS h") == "0"

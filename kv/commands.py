@@ -222,6 +222,29 @@ class Database:
                 return ""
             return "\n".join(record.value[start:stop + 1])
 
+        if cmd in ("INCR", "DECR"):
+            if len(parts) != 2:
+                return "ERR wrong number of arguments"
+            record = self._live_record(parts[1])
+            if record is None:
+                current = 0
+            elif record.kind != "string":
+                return WRONGTYPE
+            else:
+                try:
+                    current = int(record.value)
+                except ValueError:
+                    return "ERR value is not an integer"
+            current += 1 if cmd == "INCR" else -1
+            self.index.put(parts[1], str(current))
+            self._persist("SET %s %s" % (parts[1], current), persist)
+            return str(current)
+
+        if cmd == "FLUSHDB":
+            self.index.clear()
+            self._persist(line, persist)
+            return "OK"
+
         return "ERR unknown command"
 
     def _persist(self, line, persist):
