@@ -1,8 +1,8 @@
 import sys
 
+from kv import log
 from kv.commands import Database
 from kv.store import Index
-from kv import log
 
 
 def main():

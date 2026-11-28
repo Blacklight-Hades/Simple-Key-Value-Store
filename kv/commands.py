@@ -72,7 +72,10 @@ class Database:
             results = []
             for key in parts[1:]:
                 record = self._live_record(key)
-                results.append(record.value if record else "NULL")
+                if record is None or record.kind != "string":
+                    results.append("NULL")
+                else:
+                    results.append(record.value)
             return "\n".join(results)
 
         if cmd == "EXPIRE":
@@ -88,7 +91,7 @@ class Database:
             deadline = time.time() + seconds
             record.expires_at = deadline
             # Log the absolute deadline so replay doesn't restart the clock.
-            self._persist("PEXPIREAT %s %s" % (parts[1], deadline), persist)
+            self._persist(f"PEXPIREAT {parts[1]} {deadline}", persist)
             return "1"
 
         if cmd == "PEXPIREAT":
@@ -237,7 +240,7 @@ class Database:
                     return "ERR value is not an integer"
             current += 1 if cmd == "INCR" else -1
             self.index.put(parts[1], str(current))
-            self._persist("SET %s %s" % (parts[1], current), persist)
+            self._persist(f"SET {parts[1]} {current}", persist)
             return str(current)
 
         if cmd == "FLUSHDB":
