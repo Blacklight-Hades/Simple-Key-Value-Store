@@ -2,3 +2,5 @@ data.db
 __pycache__/
 .venv/
 .pytest_cache/
+gradebot_Darwin_arm64
+.DS_Store
